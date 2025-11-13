@@ -43,17 +43,24 @@ async function start() {
     await mongoose.connect(mongo, { useNewUrlParser: true, useUnifiedTopology: true });
     console.log('Connected to MongoDB');
 
-    // Optionally bootstrap an initial admin when environment variables are provided.
-    const adminUser = process.env.ADMIN_USERNAME;
-    const adminPass = process.env.ADMIN_PASSWORD;
-    if (adminUser && adminPass) {
-        const existingAdmin = await Account.findOne({ role: 'admin' });
-        if (!existingAdmin) {
-            const passwordHash = await hashPassword(adminPass);
-            const admin = new Account({ username: adminUser, passwordHash, role: 'admin' });
-            await admin.save();
-            console.log('Created initial admin user:', adminUser);
+    // Bootstrap admin ONLY if none exists, using environment variables.
+    // This avoids embedding credentials in code. Provide ADMIN_USERNAME and ADMIN_PASSWORD in .env for first-run bootstrap.
+    try {
+        const adminCount = await Account.countDocuments({ role: 'admin' });
+        if (adminCount === 0) {
+            const envAdminUser = process.env.ADMIN_USERNAME;
+            const envAdminPass = process.env.ADMIN_PASSWORD;
+            if (envAdminUser && envAdminPass) {
+                const passwordHash = await hashPassword(envAdminPass);
+                const admin = new Account({ username: envAdminUser, passwordHash, role: 'admin' });
+                await admin.save();
+                console.log('Bootstrapped initial admin from env:', envAdminUser);
+            } else {
+                console.warn('No admin exists and ADMIN_USERNAME/ADMIN_PASSWORD not set. Please seed an admin user.');
+            }
         }
+    } catch (e) {
+        console.warn('Warning while checking/bootstrapping admin', e?.message || e);
     }
     app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
 }
