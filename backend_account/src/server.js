@@ -9,6 +9,8 @@ const mongoose = require('mongoose');
 const accountRoutes = require('./routes/accountRoutes');
 const controlRoutes = require('./routes/controlRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
+const permissionRoutes = require('./routes/permissionRoutes');
+const actionLogRoutes = require('./routes/actionLogRoutes');
 const Account = require('./models/Account');
 const { hashPassword } = require('./utils/hash');
 
@@ -17,7 +19,14 @@ app.use(helmet());
 // Capture raw body for HMAC verification by devices (middleware will read req.rawBody)
 app.use(express.json({ verify: (req, res, buf, encoding) => { req.rawBody = buf.toString(encoding || 'utf8'); } }));
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
+// Increased rate limit for local development (ESP32 polls every 3s + app usage)
+// standardHeaders and legacyHeaders disabled to avoid X-Forwarded-For warnings
+const limiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 1000,
+    standardHeaders: false,
+    legacyHeaders: false
+});
 app.use(limiter);
 
 // routes
@@ -26,6 +35,10 @@ app.use('/api/accounts', accountRoutes);
 app.use('/api', controlRoutes);
 // device registration (admin)
 app.use('/api', deviceRoutes);
+// permission management routes
+app.use('/api', permissionRoutes);
+// action log routes (history)
+app.use('/api', actionLogRoutes);
 
 // health
 app.get('/health', (req, res) => res.json({ ok: true }));
@@ -36,7 +49,6 @@ async function start() {
     // Accept either MONGODB_URI or MONGO_URI (some services use a different env name)
     const mongo = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/iot_accounts';
     try {
-        // Mask credentials when printing
         const display = (mongo || '').replace(/(:\/\/)(.*@)/, '$1****@');
         console.log('Connecting to MongoDB using URI:', display);
     } catch (_) { }

@@ -11,10 +11,10 @@ async function authenticate(req, res, next) {
         const payload = jwtUtil.verify(token);
         // payload should include id
         if (!payload || !payload.id) return res.status(401).json({ error: 'Invalid token payload' });
-        const account = await Account.findById(payload.id).lean();
+        const account = await Account.findById(payload.id);
         if (!account) return res.status(401).json({ error: 'Account not found' });
-        // attach minimal info
-        req.account = { id: account._id.toString(), username: account.username, role: account.role, modules: account.modules };
+        // Attach full account document with permissions and hasPermission method
+        req.account = account;
         next();
     } catch (err) {
         return res.status(401).json({ error: 'Invalid or expired token' });

@@ -1,0 +1,1210 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart';
+import '../services/connectivity_service.dart';
+import 'neumorphic_container.dart';
+
+class DeviceDashboard extends StatefulWidget {
+  final bool enabled;
+  final Future<void> Function(String action) onAction;
+  final bool isAdmin;
+  final Map<String, dynamic> permissions;
+
+  const DeviceDashboard({
+    super.key,
+    required this.enabled,
+    required this.onAction,
+    this.isAdmin = false,
+    this.permissions = const {},
+  });
+
+  @override
+  State<DeviceDashboard> createState() => _DeviceDashboardState();
+}
+
+class _DeviceDashboardState extends State<DeviceDashboard> {
+  Timer? _pollTimer;
+  Timer? _countdownTimer;
+  late final VoidCallback _modeListener;
+
+  // Real-time sensor data from API
+  double temperature = 0;
+  double humidity = 0;
+  int gasValue = 0;
+  bool fireAlert = false;
+  bool awningOpen = false;
+  bool doorOpen = false;
+  bool raining = false;
+  bool awningAutoMode = false;
+
+  // Alarm mute state from API
+  List<String> mutedSensors =
+      []; // ['all'], ['fire'], ['gas'], or ['fire', 'gas']
+  DateTime? muteEndsAt;
+  String selectedSensor = 'all'; // UI dropdown selection
+
+  bool wifiConnected = false; // API call success (not used for mode icons)
+  double _gateSlide = 0.0;
+
+  // Door password change state
+  final _newPasswordController = TextEditingController();
+  bool _changingPassword = false;
+
+  static const _bgColor = Color(0xFFDCE5F0);
+  static const _textColor = Color(0xFF3E4E5E);
+
+  TextStyle get _titleStyle => const TextStyle(
+        color: _textColor,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.2,
+      );
+
+  TextStyle get _labelStyle => const TextStyle(
+        color: _textColor,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.2,
+      );
+
+  TextStyle get _valueStyle => const TextStyle(
+        color: _textColor,
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    // React to connectivity mode changes (Local/Cloud) by refetching immediately
+    _modeListener = () {
+      // When mode flips, issue an immediate refresh so UI stays in sync
+      _fetchLatestData();
+    };
+    connectivityService.modeNotifier.addListener(_modeListener);
+
+    _fetchLatestData(); // Immediate fetch
+    _pollTimer =
+        Timer.periodic(const Duration(seconds: 3), (_) => _fetchLatestData());
+    // Countdown timer for alarm UI updates
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && mutedSensors.isNotEmpty) setState(() {});
+    });
+  }
+
+  // Permission helper - admin has all permissions
+  bool _hasPermission(String category, String action) {
+    if (widget.isAdmin) return true;
+    try {
+      final categoryPerms = widget.permissions[category];
+      if (categoryPerms == null) return false;
+      if (categoryPerms is! Map) return false;
+      return categoryPerms[action] == true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _countdownTimer?.cancel();
+    _newPasswordController.dispose();
+    connectivityService.modeNotifier.removeListener(_modeListener);
+    super.dispose();
+  }
+
+  Future<void> _fetchLatestData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('user_token');
+      if (token == null) return;
+
+      final url = connectivityService.uri('/devices/$deviceId/data/latest');
+      final headers = connectivityService.buildHeaders(token: token);
+      final response = await http.get(url, headers: headers);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            temperature = (data['temperature'] ?? 0).toDouble();
+            humidity = (data['humidity'] ?? 0).toDouble();
+            gasValue = (data['gasValue'] ?? 0).toInt();
+            fireAlert = data['fireAlert'] ?? false;
+            awningOpen = data['awningOpen'] ?? false;
+            doorOpen = data['doorOpen'] ?? false;
+            raining = data['raining'] ?? false;
+            awningAutoMode = data['awningAutoMode'] ?? false;
+            mutedSensors = List<String>.from(data['mutedSensors'] ?? []);
+            muteEndsAt = data['muteEndsAt'] != null
+                ? DateTime.parse(data['muteEndsAt'])
+                : null;
+            wifiConnected = true;
+          });
+        }
+      } else {
+        if (mounted) setState(() => wifiConnected = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => wifiConnected = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: _bgColor,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              _buildStatusBar(),
+              const SizedBox(height: 24),
+              _buildSensorRow(),
+              const SizedBox(height: 24),
+              _buildControlGrid(),
+              const SizedBox(height: 24),
+              if (_hasPermission('alarm', 'view')) _buildAlarmManagement(),
+              if (_hasPermission('alarm', 'view')) const SizedBox(height: 24),
+              if (widget.isAdmin) _buildDoorSecurityCard(),
+              if (widget.isAdmin) const SizedBox(height: 24),
+              _buildBottomNavigation(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 1) Status Bar
+  Widget _buildStatusBar() {
+    return ValueListenableBuilder<ConnectivityMode>(
+      valueListenable: connectivityService.modeNotifier,
+      builder: (context, mode, _) {
+        final bool localActive = mode == ConnectivityMode.local;
+        final bool cloudActive = mode == ConnectivityMode.cloud;
+        final bool offline = mode == ConnectivityMode.offline;
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStatusIcon(Icons.cloud_outlined, cloudActive),
+            const SizedBox(width: 16),
+            _buildStatusIcon(Icons.wifi, localActive),
+            const SizedBox(width: 16),
+            _buildStatusIcon(
+                offline ? Icons.report_problem : Icons.check, false),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusIcon(IconData icon, bool isActive) {
+    return NeumorphicContainer(
+      width: 50,
+      height: 50,
+      isActive: isActive,
+      borderRadius: BorderRadius.circular(25),
+      padding: EdgeInsets.zero,
+      child: Center(
+        child: Icon(
+          icon,
+          color: isActive ? Colors.blue : _textColor.withValues(alpha: 0.55),
+          size: 22,
+        ),
+      ),
+    );
+  }
+
+  // 2) Sensor Row
+  Widget _buildSensorRow() {
+    final canTemp = _hasPermission('sensors', 'viewTemperature');
+    final canHum = _hasPermission('sensors', 'viewHumidity');
+    final canGas = _hasPermission('sensors', 'viewGas');
+    final canFire = _hasPermission('sensors', 'viewFire');
+
+    final anySensor = canTemp || canHum || canGas || canFire;
+
+    if (!anySensor) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          'Không có quyền xem cảm biến',
+          style: _labelStyle.copyWith(
+            color: _textColor.withValues(alpha: 0.5),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    final sensors = <Widget>[];
+
+    if (canTemp) {
+      sensors.add(Expanded(
+        child: _buildSensorCard(
+          Icons.thermostat_outlined,
+          'Temperature',
+          '${temperature.toStringAsFixed(1)}°C',
+          Colors.orange,
+        ),
+      ));
+    }
+    if (canHum) {
+      if (sensors.isNotEmpty) sensors.add(const SizedBox(width: 14));
+      sensors.add(Expanded(
+        child: _buildSensorCard(
+          Icons.water_drop_outlined,
+          'Humidity',
+          '${humidity.toStringAsFixed(0)}%',
+          Colors.blue,
+        ),
+      ));
+    }
+    if (canGas) {
+      if (sensors.isNotEmpty) sensors.add(const SizedBox(width: 14));
+      sensors.add(Expanded(
+        child: _buildSensorCard(
+          Icons.health_and_safety_outlined,
+          'Gas',
+          gasValue > 1000 ? 'Danger' : 'Safe',
+          gasValue > 1000 ? Colors.red : Colors.green,
+        ),
+      ));
+    }
+    if (canFire) {
+      if (sensors.isNotEmpty) sensors.add(const SizedBox(width: 14));
+      sensors.add(Expanded(
+        child: _buildSensorCard(
+          Icons.local_fire_department_outlined,
+          'Fire',
+          fireAlert ? 'Danger' : 'Safe',
+          fireAlert ? Colors.redAccent : Colors.deepOrange,
+        ),
+      ));
+    }
+
+    return Row(children: sensors);
+  }
+
+  Widget _buildSensorCard(
+      IconData icon, String label, String value, Color iconColor) {
+    return NeumorphicContainer(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: iconColor, size: 26),
+          const SizedBox(height: 6),
+          Text(label, style: _labelStyle.copyWith(fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(value, style: _valueStyle),
+        ],
+      ),
+    );
+  }
+
+  // 3) Control Grid
+  Widget _buildControlGrid() {
+    return Column(
+      children: [
+        if (_hasPermission('door', 'view')) ...[
+          _buildMainGateCard(),
+          const SizedBox(height: 18),
+        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_hasPermission('awning', 'view'))
+              Expanded(child: _buildAutomatedRoofCard()),
+            if (_hasPermission('awning', 'view')) const SizedBox(width: 18),
+            Expanded(child: _buildLightCard()),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _buildFanCard(),
+      ],
+    );
+  }
+
+  Widget _buildMainGateCard() {
+    return NeumorphicContainer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Main Gate', style: _titleStyle),
+          const SizedBox(height: 14),
+          _buildCompactGateSlider(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactGateSlider() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double trackWidth = 260;
+        final double handleSize = 48;
+        final double maxTravel = trackWidth - handleSize - 8;
+        final double leftPos = 4 + _gateSlide * maxTravel;
+
+        final String label = doorOpen ? 'Slide to Close' : 'Slide to Open';
+        final IconData icon = doorOpen ? Icons.lock_open : Icons.lock_outline;
+
+        return Center(
+          child: Container(
+            width: trackWidth,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFCCD6E0),
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: const [
+                BoxShadow(
+                    color: Colors.white, offset: Offset(-3, -3), blurRadius: 6),
+                BoxShadow(
+                    color: Color(0xFFA6BCCF),
+                    offset: Offset(3, 3),
+                    blurRadius: 6),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Center(
+                  child: Text(
+                    label,
+                    style: _labelStyle.copyWith(
+                      fontSize: 13,
+                      color: _textColor.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 120),
+                  left: leftPos,
+                  top: 4,
+                  child: GestureDetector(
+                    onHorizontalDragUpdate: (details) {
+                      if (!widget.enabled) return;
+                      setState(() {
+                        _gateSlide = (_gateSlide + details.delta.dx / maxTravel)
+                            .clamp(0.0, 1.0);
+                      });
+                    },
+                    onHorizontalDragEnd: (_) => _onGateSlideEnd(),
+                    child: Container(
+                      width: handleSize,
+                      height: handleSize,
+                      decoration: BoxDecoration(
+                        color: _bgColor,
+                        shape: BoxShape.circle,
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Colors.white,
+                              offset: Offset(-3, -3),
+                              blurRadius: 6),
+                          BoxShadow(
+                              color: Color(0xFFA6BCCF),
+                              offset: Offset(3, 3),
+                              blurRadius: 6),
+                        ],
+                      ),
+                      child: Icon(icon, color: _textColor, size: 22),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onGateSlideEnd() async {
+    if (!widget.enabled) return;
+
+    // Check permission before allowing action
+    final action = doorOpen ? 'close_door' : 'open_door';
+    final permissionAction = doorOpen ? 'close' : 'open';
+    if (!_hasPermission('door', permissionAction)) {
+      setState(() => _gateSlide = 0.0);
+      return;
+    }
+
+    if (_gateSlide >= 0.9) {
+      // Update UI optimistically before sending command
+      setState(() {
+        doorOpen = !doorOpen;
+        _gateSlide = 0.0;
+      });
+
+      // Send command (don't await to keep UI responsive)
+      widget.onAction(action);
+      // Timer will sync real state in next 3s poll
+    } else {
+      setState(() => _gateSlide = 0.0);
+    }
+  }
+
+  Widget _buildAutomatedRoofCard() {
+    return NeumorphicContainer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Automated Roof', style: _titleStyle.copyWith(fontSize: 14)),
+          const SizedBox(height: 14),
+          _buildAwningOpenCloseButtons(),
+          const SizedBox(height: 14),
+          _buildAutoModeToggle(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAwningOpenCloseButtons() {
+    final canOpen = _hasPermission('awning', 'open');
+    final canClose = _hasPermission('awning', 'close');
+
+    return Column(
+      children: [
+        NeumorphicButton(
+          width: double.infinity,
+          height: 50,
+          borderRadius: BorderRadius.circular(16),
+          onPressed: (widget.enabled && canOpen)
+              ? () => widget.onAction('open_awning')
+              : null,
+          child: Center(
+            child: Text(
+              'Mở Mái Che',
+              style: _labelStyle.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: canOpen ? _textColor : _textColor.withValues(alpha: 0.3),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        NeumorphicButton(
+          width: double.infinity,
+          height: 50,
+          borderRadius: BorderRadius.circular(16),
+          onPressed: (widget.enabled && canClose)
+              ? () => widget.onAction('close_awning')
+              : null,
+          child: Center(
+            child: Text(
+              'Đóng Mái Che',
+              style: _labelStyle.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color:
+                    canClose ? _textColor : _textColor.withValues(alpha: 0.3),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAutoModeToggle() {
+    final canSetMode = _hasPermission('awning', 'setMode');
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text('Auto Mode', style: _labelStyle.copyWith(fontSize: 12)),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: (widget.enabled && canSetMode) ? _toggleAutoMode : null,
+          child: Opacity(
+            opacity: canSetMode ? 1.0 : 0.4,
+            child: Container(
+              width: 50,
+              height: 28,
+              decoration: BoxDecoration(
+                color: awningAutoMode ? Colors.green : const Color(0xFFCCD6E0),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Colors.white,
+                      offset: Offset(-2, -2),
+                      blurRadius: 4),
+                  BoxShadow(
+                      color: Color(0xFFA6BCCF),
+                      offset: Offset(2, 2),
+                      blurRadius: 4),
+                ],
+              ),
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                alignment: awningAutoMode
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Container(
+                  margin: const EdgeInsets.all(3),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: _bgColor,
+                    shape: BoxShape.circle,
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.white,
+                          offset: Offset(-1, -1),
+                          blurRadius: 2),
+                      BoxShadow(
+                          color: Color(0xFFA6BCCF),
+                          offset: Offset(1, 1),
+                          blurRadius: 2),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _toggleAutoMode() async {
+    final newMode = !awningAutoMode;
+    final action = newMode ? 'set_auto' : 'set_manual';
+
+    // Update UI optimistically
+    setState(() {
+      awningAutoMode = newMode;
+    });
+
+    // Send command (don't await to keep UI responsive)
+    widget.onAction(action);
+    // Timer will sync real state in next 3s poll
+  }
+
+  Widget _buildLightCard() {
+    final card = NeumorphicContainer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Living Room Lights', style: _titleStyle.copyWith(fontSize: 14)),
+          const SizedBox(height: 12),
+          Center(
+            child: NeumorphicButton(
+              width: 70,
+              height: 70,
+              borderRadius: BorderRadius.circular(35),
+              onPressed: null,
+              child: Icon(
+                Icons.lightbulb,
+                color: _textColor.withValues(alpha: 0.35),
+                size: 36,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return _dimUnavailable(card, 'Coming Soon');
+  }
+
+  Widget _buildFanCard() {
+    final card = NeumorphicContainer(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Smart Fan', style: _titleStyle),
+                const SizedBox(height: 6),
+                Text(
+                  'Stopped',
+                  style: TextStyle(
+                    color: _textColor.withValues(alpha: 0.6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          NeumorphicButton(
+            width: 70,
+            height: 70,
+            borderRadius: BorderRadius.circular(35),
+            onPressed: null,
+            child: Icon(
+              Icons.mode_fan_off_outlined,
+              color: _textColor.withValues(alpha: 0.35),
+              size: 36,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return _dimUnavailable(card, 'Coming Soon');
+  }
+
+  Widget _dimUnavailable(Widget child, String message) {
+    return Stack(
+      children: [
+        Opacity(opacity: 0.6, child: child),
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Center(
+              child: Text(
+                message,
+                style: _labelStyle.copyWith(
+                  fontSize: 13,
+                  color: _textColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAlarmManagement() {
+    final bool hasMutedSensors = mutedSensors.isNotEmpty;
+
+    return NeumorphicContainer(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_paused, color: _textColor, size: 24),
+              const SizedBox(width: 12),
+              Text('Quản lý Báo động', style: _titleStyle),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Dropdown chọn thiết bị (only show sensors user has permission for)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: _bgColor,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  offset: const Offset(-3, -3),
+                  blurRadius: 6,
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  offset: const Offset(3, 3),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: selectedSensor,
+                isExpanded: true,
+                dropdownColor: _bgColor,
+                style: _labelStyle.copyWith(fontSize: 14),
+                items: _buildSensorDropdownItems(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => selectedSensor = value);
+                  }
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Show countdown and status if muted
+          if (hasMutedSensors && muteEndsAt != null) ...[
+            _buildMutedSensorsStatus(),
+            const SizedBox(height: 12),
+            _buildCountdownTimer(),
+            const SizedBox(height: 16),
+            // Admin/authorized cancel button
+            if (_canCancelSnooze()) ...[
+              GestureDetector(
+                onTap: () =>
+                    widget.onAction('cancel_snooze&sensor=$selectedSensor'),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border:
+                        Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.notifications_active,
+                          color: Colors.red[700], size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Kích hoạt lại ${_getSensorName(selectedSensor)}${widget.isAdmin ? " (Admin)" : ""}',
+                        style: _labelStyle.copyWith(
+                          color: Colors.red[700],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ],
+
+          // Time chip buttons (only show if user has permission for selected sensor)
+          if (_canSnoozeSelectedSensor())
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildTimeChip('3 phút', 180),
+                _buildTimeChip('5 phút', 300),
+                _buildTimeChip('10 phút', 600),
+                _buildTimeChip('30 phút', 1800),
+                _buildTimeChip('60 phút', 3600),
+              ],
+            ),
+
+          // Show message if user lacks permission
+          if (!_canSnoozeSelectedSensor())
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock, color: Colors.orange[700], size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Bạn không có quyền tạm hoãn ${_getSensorName(selectedSensor)}',
+                    style: _labelStyle.copyWith(
+                      color: Colors.orange[700],
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  bool _canCancelSnooze() {
+    return _hasPermission('alarm', 'cancelSnooze');
+  }
+
+  bool _canSnoozeSelectedSensor() {
+    switch (selectedSensor) {
+      case 'all':
+        return _hasPermission('alarm', 'snoozeAll');
+      case 'fire':
+        return _hasPermission('alarm', 'snoozeFire');
+      case 'gas':
+        return _hasPermission('alarm', 'snoozeGas');
+      default:
+        return false;
+    }
+  }
+
+  List<DropdownMenuItem<String>> _buildSensorDropdownItems() {
+    final items = <DropdownMenuItem<String>>[];
+
+    if (_hasPermission('alarm', 'snoozeAll')) {
+      items.add(
+          const DropdownMenuItem(value: 'all', child: Text('Tất cả thiết bị')));
+    }
+
+    if (_hasPermission('alarm', 'snoozeFire')) {
+      items.add(const DropdownMenuItem(
+          value: 'fire', child: Text('🔥 Cảm biến Lửa')));
+    }
+
+    if (_hasPermission('alarm', 'snoozeGas')) {
+      items.add(const DropdownMenuItem(
+          value: 'gas', child: Text('💨 Cảm biến Khí Gas')));
+    }
+
+    // If no permissions, show disabled all option
+    if (items.isEmpty) {
+      items.add(const DropdownMenuItem(
+          value: 'all', enabled: false, child: Text('Không có quyền')));
+    }
+
+    return items;
+  }
+
+  String _getSensorName(String sensor) {
+    switch (sensor) {
+      case 'fire':
+        return 'Cảm biến Lửa';
+      case 'gas':
+        return 'Cảm biến Gas';
+      default:
+        return 'Tất cả';
+    }
+  }
+
+  Widget _buildMutedSensorsStatus() {
+    final List<String> mutedNames = mutedSensors.map((s) {
+      if (s == 'all') return 'Tất cả';
+      if (s == 'fire') return 'Lửa';
+      if (s == 'gas') return 'Gas';
+      return s;
+    }).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.volume_off, color: Colors.blue[700], size: 20),
+          const SizedBox(width: 8),
+          Text(
+            'Đang tắt: ${mutedNames.join(", ")}',
+            style: _labelStyle.copyWith(
+              color: Colors.blue[700],
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeChip(String label, int seconds) {
+    return GestureDetector(
+      onTap: widget.enabled
+          ? () => widget
+              .onAction('set_snooze&seconds=$seconds&sensor=$selectedSensor')
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: _bgColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.9),
+              offset: const Offset(-4, -4),
+              blurRadius: 8,
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              offset: const Offset(4, 4),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: _labelStyle.copyWith(fontSize: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountdownTimer() {
+    if (muteEndsAt == null) return const SizedBox.shrink();
+
+    final now = DateTime.now();
+    final remaining = muteEndsAt!.difference(now);
+
+    if (remaining.isNegative) {
+      return Text(
+        'Báo động đã kích hoạt lại',
+        style: _labelStyle.copyWith(color: Colors.green, fontSize: 14),
+      );
+    }
+
+    final minutes = remaining.inMinutes;
+    final seconds = remaining.inSeconds % 60;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer, color: Colors.orange[700], size: 20),
+          const SizedBox(width: 8),
+          Text(
+            'Tạm hoãn: ${minutes}m ${seconds}s',
+            style: _labelStyle.copyWith(
+              color: Colors.orange[700],
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDoorSecurityCard() {
+    return NeumorphicContainer(
+      padding: const EdgeInsets.all(24),
+      borderRadius: BorderRadius.circular(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lock_outline, color: _textColor, size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'Bảo Mật Cửa',
+                style: _labelStyle.copyWith(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Thay đổi mật khẩu cửa chính',
+            style: _labelStyle.copyWith(
+              fontSize: 14,
+              color: _textColor.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _newPasswordController,
+            maxLength: 8,
+            obscureText: true,
+            style: TextStyle(color: _textColor, fontSize: 16),
+            decoration: InputDecoration(
+              labelText: 'Mật khẩu mới (4-8 ký tự)',
+              labelStyle: TextStyle(
+                color: _textColor.withValues(alpha: 0.6),
+                fontSize: 14,
+              ),
+              prefixIcon:
+                  Icon(Icons.key, color: _textColor.withValues(alpha: 0.7)),
+              filled: true,
+              fillColor: Colors.grey.withValues(alpha: 0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide:
+                    BorderSide(color: _textColor.withValues(alpha: 0.2)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide:
+                    BorderSide(color: _textColor.withValues(alpha: 0.2)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(
+                    color: Colors.blue.withValues(alpha: 0.5), width: 2),
+              ),
+              counterStyle: TextStyle(color: _textColor.withValues(alpha: 0.5)),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Vui lòng nhập mật khẩu';
+              }
+              if (value.length < 4 || value.length > 8) {
+                return 'Mật khẩu phải từ 4-8 ký tự';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _changingPassword ? null : _changePassword,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                disabledBackgroundColor: Colors.grey.withValues(alpha: 0.3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 4,
+              ),
+              child: _changingPassword
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.sync_lock, color: Colors.white),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Cập Nhật Mật Khẩu',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _changePassword() async {
+    // Validate input
+    final newPassword = _newPasswordController.text.trim();
+    if (newPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Vui lòng nhập mật khẩu mới'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    if (newPassword.length < 4 || newPassword.length > 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Mật khẩu phải từ 4-8 ký tự'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _changingPassword = true;
+    });
+
+    try {
+      // Send command to ESP32 via backend
+      await widget.onAction('change_password&new_password=$newPassword');
+
+      if (mounted) {
+        setState(() {
+          _changingPassword = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Đã cập nhật mật khẩu cửa thành công'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // Clear input field
+        _newPasswordController.clear();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _changingPassword = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Lỗi: ${e.toString()}'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildBottomNavigation() {
+    return NeumorphicContainer(
+      height: 70,
+      borderRadius: BorderRadius.circular(35),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          Icon(Icons.home, color: _textColor, size: 26),
+          Text('History',
+              style: _labelStyle.copyWith(
+                  color: _textColor.withValues(alpha: 0.75))),
+          Icon(Icons.settings_outlined,
+              color: _textColor.withValues(alpha: 0.75), size: 26),
+          Text('Admin',
+              style: _labelStyle.copyWith(
+                  color: _textColor.withValues(alpha: 0.75))),
+        ],
+      ),
+    );
+  }
+}

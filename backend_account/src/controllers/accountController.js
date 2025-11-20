@@ -16,13 +16,20 @@ async function login(req, res) {
 
 // POST /api/accounts/    (admin only)
 async function createAccount(req, res) {
-    const { username, password, role = 'user', modules = [] } = req.body || {};
+    const { username, password, role = 'user', modules = [], permissions } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: 'username and password required' });
     if (!['admin', 'user', 'guest'].includes(role)) return res.status(400).json({ error: 'invalid role' });
     const exists = await Account.findOne({ username });
     if (exists) return res.status(409).json({ error: 'username already exists' });
     const passwordHash = await hashPassword(password);
-    const acc = new Account({ username, passwordHash, role, modules });
+
+    // Create account with permissions if provided
+    const accountData = { username, passwordHash, role, modules };
+    if (permissions) {
+        accountData.permissions = permissions;
+    }
+
+    const acc = new Account(accountData);
     await acc.save();
     const out = acc.toObject();
     delete out.passwordHash;
@@ -46,7 +53,7 @@ async function getAccount(req, res) {
 // PATCH /api/accounts/:id   (admin only)
 async function updateAccount(req, res) {
     const { id } = req.params;
-    const { password, role, modules } = req.body || {};
+    const { password, role, modules, permissions } = req.body || {};
     const target = await Account.findById(id);
     if (!target) return res.status(404).json({ error: 'not found' });
     if (role) {
@@ -55,6 +62,9 @@ async function updateAccount(req, res) {
     }
     if (typeof modules !== 'undefined') {
         target.modules = modules;
+    }
+    if (typeof permissions !== 'undefined') {
+        target.permissions = permissions;
     }
     if (password) {
         target.passwordHash = await hashPassword(password);
