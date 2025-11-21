@@ -1,0 +1,46 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+.env
+
+# Flutter/Dart
+smart_home_iot/build/
+smart_home_iot/.dart_tool/
+smart_home_iot/.flutter-plugins
+smart_home_iot/.flutter-plugins-dependencies
+smart_home_iot/.packages
+smart_home_iot/pubspec.lock
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Backend logs
+backend_account/logs/
+backend_esp32/logs/
+*.log
+
+# MongoDB memory server cache (contains large binaries)
+**/node_modules/.cache/mongodb-memory-server/
+
+# Test coverage
+coverage/
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+dist/
+out/
