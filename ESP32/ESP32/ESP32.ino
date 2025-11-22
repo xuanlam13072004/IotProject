@@ -536,7 +536,7 @@ void handleCommand(String rawAction, const String &param)
         if (!awningOpen && !awningMoving)
         {
             awningDirection = 1;
-            long target = awningStepper.currentPosition() + (long)awningDirection * stepsPerRevolution;
+            long target = awningStepper.currentPosition() + (long)awningDirection * (stepsPerRevolution / 2);
             awningStepper.moveTo(target);
             awningMoving = true;
             Serial.println("[EXEC] -> Đang mở mái che...");
@@ -548,7 +548,7 @@ void handleCommand(String rawAction, const String &param)
         if (awningOpen && !awningMoving)
         {
             awningDirection = -1;
-            long target = awningStepper.currentPosition() + (long)awningDirection * stepsPerRevolution;
+            long target = awningStepper.currentPosition() + (long)awningDirection * (stepsPerRevolution / 2);
             awningStepper.moveTo(target);
             awningMoving = true;
             Serial.println("[EXEC] -> Đang đóng mái che...");
@@ -1364,7 +1364,7 @@ void TaskAwning(void *pvParameters)
         if (awningAutoMode && isRaining && awningOpen && !awningMoving)
         {
             awningDirection = -1;
-            long target = awningStepper.currentPosition() + (long)awningDirection * stepsPerRevolution;
+            long target = awningStepper.currentPosition() + (long)awningDirection * (stepsPerRevolution / 2);
             awningStepper.moveTo(target);
             awningMoving = true;
             // Ghi log khi AUTO mode tự động đóng mái che do mưa
@@ -1426,7 +1426,7 @@ void TaskAwning(void *pvParameters)
                         // Ghi log khi mở mái che từ nút vật lý
                         sendActionLog("control_device", "button", "Opening awning via button", true, "unknown_physical");
                     }
-                    long target = awningStepper.currentPosition() + (long)awningDirection * stepsPerRevolution;
+                    long target = awningStepper.currentPosition() + (long)awningDirection * (stepsPerRevolution / 2);
                     awningStepper.moveTo(target);
                     awningMoving = true;
                 }
