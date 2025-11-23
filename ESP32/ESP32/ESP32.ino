@@ -24,9 +24,10 @@ const char *WIFI_PASS = "1234567899";
 const String ADMIN_PASSWORD = "1307";
 Preferences preferences;
 
-// --- CẤU HÌNH LOCAL (MẠNG LAN) ---
-const char *BASE_URL_ACCOUNT = "http://192.168.31.100:4000/api/devices/esp32_1";
-const char *SERVER_URL = "http://192.168.31.100:5000/api/devices/esp32_1/data";
+// --- CẤU HÌNH LOCAL (MẠNG LAN) --- (Windows Mobile Hotspot host IP 192.168.137.1)
+// Điều chỉnh nếu máy tính của bạn có IP khác khi bật Mobile Hotspot.
+const char *BASE_URL_ACCOUNT = "http://192.168.137.1:4000/api/devices/esp32_1";
+const char *SERVER_URL = "http://192.168.137.1:5000/api/devices/esp32_1/data";
 
 const char *DEVICE_SECRET = "my_secret_key_123";
 #define DEVICE_ID "esp32_1"
