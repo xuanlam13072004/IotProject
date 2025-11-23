@@ -47,7 +47,7 @@ class _HistoryContentState extends State<HistoryContent> {
 
       if (token == null) {
         setState(() {
-          _error = 'Chưa đăng nhập';
+          _error = 'Not logged in';
           _loading = false;
         });
         return;
@@ -78,13 +78,13 @@ class _HistoryContentState extends State<HistoryContent> {
         });
       } else {
         setState(() {
-          _error = 'Lỗi tải dữ liệu: ${response.statusCode}';
+          _error = 'Data load error: ${response.statusCode}';
           _loading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _error = 'Lỗi: $e';
+        _error = 'Error: $e';
         _loading = false;
       });
     }
@@ -201,11 +201,11 @@ class _HistoryContentState extends State<HistoryContent> {
     // Format username display
     String displayUsername = username;
     if (username == 'system') {
-      displayUsername = '🤖 Hệ thống (AUTO)';
+      displayUsername = '🤖 System (AUTO)';
     } else if (username == 'admin_physical') {
-      displayUsername = '🔒 Admin (Vật lý)';
+      displayUsername = '🔒 Admin (Physical)';
     } else if (username == 'unknown_physical') {
-      displayUsername = '👤 Người dùng (Vật lý)';
+      displayUsername = '👤 User (Physical)';
     } else {
       displayUsername = '👤 $username (${_getSourceLabel(source)})';
     }
@@ -317,19 +317,19 @@ class _HistoryContentState extends State<HistoryContent> {
     switch (status) {
       case 'success':
         badgeColor = _successColor;
-        label = 'Thành công';
+        label = 'Success';
         break;
       case 'failed':
         badgeColor = _dangerColor;
-        label = 'Thất bại';
+        label = 'Failed';
         break;
       case 'pending':
         badgeColor = const Color(0xFFF39C12);
-        label = 'Đang xử lý';
+        label = 'Processing';
         break;
       default:
         badgeColor = _textColor;
-        label = 'Không rõ';
+        label = 'Unknown';
     }
 
     return Container(
@@ -355,11 +355,11 @@ class _HistoryContentState extends State<HistoryContent> {
       case 'app':
         return 'App';
       case 'keypad':
-        return 'Bàn phím';
+        return 'Keypad';
       case 'button':
-        return 'Nút';
+        return 'Button';
       case 'system':
-        return 'Hệ thống';
+        return 'System';
       default:
         return source;
     }
@@ -387,7 +387,7 @@ class _HistoryContentState extends State<HistoryContent> {
               IconButton(
                 icon: Icon(Icons.refresh, color: _accentColor),
                 onPressed: _loadHistory,
-                tooltip: 'Làm mới',
+                tooltip: 'Refresh',
               ),
             ],
           ),
@@ -418,7 +418,7 @@ class _HistoryContentState extends State<HistoryContent> {
                               backgroundColor: _accentColor,
                               foregroundColor: Colors.white,
                             ),
-                            child: const Text('Thử lại'),
+                            child: const Text('Retry'),
                           ),
                         ],
                       ),
@@ -432,7 +432,7 @@ class _HistoryContentState extends State<HistoryContent> {
                                   size: 64, color: _textColor.withOpacity(0.3)),
                               const SizedBox(height: 16),
                               Text(
-                                'Chưa có lịch sử',
+                                'No history yet',
                                 style: TextStyle(
                                   color: _textColor.withOpacity(0.5),
                                   fontSize: 16,

@@ -234,7 +234,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
       return Container(
         padding: const EdgeInsets.all(16),
         child: Text(
-          'Không có quyền xem cảm biến',
+          'No permission to view sensors',
           style: _labelStyle.copyWith(
             color: _textColor.withValues(alpha: 0.5),
           ),
@@ -482,7 +482,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
               : null,
           child: Center(
             child: Text(
-              'Mở Mái Che',
+              'Open Awning',
               style: _labelStyle.copyWith(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -501,7 +501,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
               : null,
           child: Center(
             child: Text(
-              'Đóng Mái Che',
+              'Close Awning',
               style: _labelStyle.copyWith(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -693,7 +693,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
             children: [
               Icon(Icons.notifications_paused, color: _textColor, size: 24),
               const SizedBox(width: 12),
-              Text('Quản lý Báo động', style: _titleStyle),
+              Text('Alarm Management', style: _titleStyle),
             ],
           ),
           const SizedBox(height: 16),
@@ -761,7 +761,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                           color: Colors.red[700], size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        'Kích hoạt lại ${_getSensorName(selectedSensor)}${widget.isAdmin ? " (Admin)" : ""}',
+                        'Reactivate ${_getSensorName(selectedSensor)}${widget.isAdmin ? " (Admin)" : ""}',
                         style: _labelStyle.copyWith(
                           color: Colors.red[700],
                           fontWeight: FontWeight.bold,
@@ -781,11 +781,11 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildTimeChip('3 phút', 180),
-                _buildTimeChip('5 phút', 300),
-                _buildTimeChip('10 phút', 600),
-                _buildTimeChip('30 phút', 1800),
-                _buildTimeChip('60 phút', 3600),
+                _buildTimeChip('3 min', 180),
+                _buildTimeChip('5 min', 300),
+                _buildTimeChip('10 min', 600),
+                _buildTimeChip('30 min', 1800),
+                _buildTimeChip('60 min', 3600),
               ],
             ),
 
@@ -804,7 +804,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                   Icon(Icons.lock, color: Colors.orange[700], size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'Bạn không có quyền tạm hoãn ${_getSensorName(selectedSensor)}',
+                    'No permission to snooze ${_getSensorName(selectedSensor)}',
                     style: _labelStyle.copyWith(
                       color: Colors.orange[700],
                       fontSize: 13,
@@ -840,23 +840,23 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
 
     if (_hasPermission('alarm', 'snoozeAll')) {
       items.add(
-          const DropdownMenuItem(value: 'all', child: Text('Tất cả thiết bị')));
+          const DropdownMenuItem(value: 'all', child: Text('All Devices')));
     }
 
     if (_hasPermission('alarm', 'snoozeFire')) {
-      items.add(const DropdownMenuItem(
-          value: 'fire', child: Text('🔥 Cảm biến Lửa')));
+      items.add(
+          const DropdownMenuItem(value: 'fire', child: Text('🔥 Fire Sensor')));
     }
 
     if (_hasPermission('alarm', 'snoozeGas')) {
-      items.add(const DropdownMenuItem(
-          value: 'gas', child: Text('💨 Cảm biến Khí Gas')));
+      items.add(
+          const DropdownMenuItem(value: 'gas', child: Text('💨 Gas Sensor')));
     }
 
     // If no permissions, show disabled all option
     if (items.isEmpty) {
       items.add(const DropdownMenuItem(
-          value: 'all', enabled: false, child: Text('Không có quyền')));
+          value: 'all', enabled: false, child: Text('No Permission')));
     }
 
     return items;
@@ -865,18 +865,18 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
   String _getSensorName(String sensor) {
     switch (sensor) {
       case 'fire':
-        return 'Cảm biến Lửa';
+        return 'Fire Sensor';
       case 'gas':
-        return 'Cảm biến Gas';
+        return 'Gas Sensor';
       default:
-        return 'Tất cả';
+        return 'All';
     }
   }
 
   Widget _buildMutedSensorsStatus() {
     final List<String> mutedNames = mutedSensors.map((s) {
-      if (s == 'all') return 'Tất cả';
-      if (s == 'fire') return 'Lửa';
+      if (s == 'all') return 'All';
+      if (s == 'fire') return 'Fire';
       if (s == 'gas') return 'Gas';
       return s;
     }).toList();
@@ -894,7 +894,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
           Icon(Icons.volume_off, color: Colors.blue[700], size: 20),
           const SizedBox(width: 8),
           Text(
-            'Đang tắt: ${mutedNames.join(", ")}',
+            'Muted: ${mutedNames.join(", ")}',
             style: _labelStyle.copyWith(
               color: Colors.blue[700],
               fontSize: 13,
@@ -945,7 +945,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
 
     if (remaining.isNegative) {
       return Text(
-        'Báo động đã kích hoạt lại',
+        'Alarm reactivated',
         style: _labelStyle.copyWith(color: Colors.green, fontSize: 14),
       );
     }
@@ -966,7 +966,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
           Icon(Icons.timer, color: Colors.orange[700], size: 20),
           const SizedBox(width: 8),
           Text(
-            'Tạm hoãn: ${minutes}m ${seconds}s',
+            'Snoozed: ${minutes}m ${seconds}s',
             style: _labelStyle.copyWith(
               color: Colors.orange[700],
               fontSize: 14,
@@ -990,7 +990,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
               Icon(Icons.lock_outline, color: _textColor, size: 28),
               const SizedBox(width: 12),
               Text(
-                'Bảo Mật Cửa',
+                'Door Security',
                 style: _labelStyle.copyWith(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -1000,7 +1000,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Thay đổi mật khẩu cửa chính',
+            'Change main door password',
             style: _labelStyle.copyWith(
               fontSize: 14,
               color: _textColor.withValues(alpha: 0.7),
@@ -1013,7 +1013,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
             obscureText: true,
             style: TextStyle(color: _textColor, fontSize: 16),
             decoration: InputDecoration(
-              labelText: 'Mật khẩu mới (4-8 ký tự)',
+              labelText: 'New Password (4-8 chars)',
               labelStyle: TextStyle(
                 color: _textColor.withValues(alpha: 0.6),
                 fontSize: 14,
@@ -1041,10 +1041,10 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Vui lòng nhập mật khẩu';
+                return 'Please enter password';
               }
               if (value.length < 4 || value.length > 8) {
-                return 'Mật khẩu phải từ 4-8 ký tự';
+                return 'Password must be 4-8 characters';
               }
               return null;
             },
@@ -1078,7 +1078,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                         const Icon(Icons.sync_lock, color: Colors.white),
                         const SizedBox(width: 8),
                         const Text(
-                          'Cập Nhật Mật Khẩu',
+                          'Update Password',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1100,7 +1100,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
     if (newPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Vui lòng nhập mật khẩu mới'),
+          content: const Text('Please enter new password'),
           backgroundColor: Colors.orange,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -1113,7 +1113,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
     if (newPassword.length < 4 || newPassword.length > 8) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Mật khẩu phải từ 4-8 ký tự'),
+          content: const Text('Password must be 4-8 characters'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -1143,7 +1143,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 12),
                 const Expanded(
-                  child: Text('Đã cập nhật mật khẩu cửa thành công'),
+                  child: Text('Door password updated successfully'),
                 ),
               ],
             ),
@@ -1171,7 +1171,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                 const Icon(Icons.error, color: Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Lỗi: ${e.toString()}'),
+                  child: Text('Error: ${e.toString()}'),
                 ),
               ],
             ),

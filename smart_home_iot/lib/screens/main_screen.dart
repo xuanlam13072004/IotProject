@@ -123,26 +123,26 @@ class _MainScreenState extends State<MainScreen> {
       if (sensorMatch != null) {
         final sensor = sensorMatch.group(1);
         if (sensor == 'fire')
-          sensorInfo = ' (Lửa)';
+          sensorInfo = ' (Fire)';
         else if (sensor == 'gas')
           sensorInfo = ' (Gas)';
-        else if (sensor == 'all') sensorInfo = ' (Tất cả)';
+        else if (sensor == 'all') sensorInfo = ' (All)';
       }
     }
 
     const Map<String, String> actionMessages = {
-      'open_door': 'Đã gửi lệnh Mở Cửa chính.',
-      'close_door': 'Đã gửi lệnh Đóng Cửa chính.',
-      'open_awning': 'Đã gửi lệnh Mở Mái che.',
-      'close_awning': 'Đã gửi lệnh Đóng Mái che.',
-      'set_auto': 'Đã chuyển Mái che sang chế độ Tự động.',
-      'set_manual': 'Đã chuyển Mái che sang chế độ Thủ công.',
-      'set_snooze': 'Đã tạm hoãn báo động',
-      'cancel_snooze': 'Đã kích hoạt lại báo động',
+      'open_door': 'Sent command: Open Main Door.',
+      'close_door': 'Sent command: Close Main Door.',
+      'open_awning': 'Sent command: Open Awning.',
+      'close_awning': 'Sent command: Close Awning.',
+      'set_auto': 'Switched Awning to Auto mode.',
+      'set_manual': 'Switched Awning to Manual mode.',
+      'set_snooze': 'Alarm snoozed',
+      'cancel_snooze': 'Alarm reactivated',
     };
 
     final baseMessage =
-        actionMessages[baseAction] ?? 'Đã gửi lệnh: $baseAction';
+        actionMessages[baseAction] ?? 'Sent command: $baseAction';
     return baseMessage + sensorInfo + (sensorInfo.isNotEmpty ? '' : '.');
   }
 
@@ -151,7 +151,7 @@ class _MainScreenState extends State<MainScreen> {
     final token = prefs.getString('user_token');
     if (token == null) {
       if (mounted) {
-        NotificationService.show(context, 'Chưa đăng nhập!', true);
+        NotificationService.show(context, 'Not logged in!', true);
       }
       return;
     }
@@ -195,14 +195,14 @@ class _MainScreenState extends State<MainScreen> {
       } else {
         NotificationService.show(
           context,
-          'Gửi lệnh thất bại, vui lòng thử lại!',
+          'Command failed, please try again!',
           true,
         );
       }
     } catch (e) {
       if (!mounted) return;
       NotificationService.show(
-          context, 'Gửi lệnh thất bại, vui lòng thử lại!', true);
+          context, 'Command failed, please try again!', true);
     }
   }
 
@@ -232,7 +232,7 @@ class _MainScreenState extends State<MainScreen> {
                 Icon(Icons.lock, size: 64, color: _textColor.withOpacity(0.3)),
                 const SizedBox(height: 16),
                 Text(
-                  'Chỉ Admin mới có quyền truy cập',
+                  'Admin access only',
                   style: TextStyle(
                     color: _textColor.withOpacity(0.5),
                     fontSize: 16,
@@ -273,15 +273,15 @@ class _MainScreenState extends State<MainScreen> {
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.tune),
-              label: 'Điều khiển',
+              label: 'Control',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.history),
-              label: 'Lịch sử',
+              label: 'History',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.manage_accounts),
-              label: 'Quản lý',
+              label: 'Manage',
             ),
           ],
           onTap: (index) {

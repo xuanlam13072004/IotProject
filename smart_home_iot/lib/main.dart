@@ -94,10 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (mounted) _navigateByRole(role);
       } else {
-        _showError('Đăng nhập thất bại: ${response.body}');
+        _showError('Login failed: ${response.body}');
       }
     } catch (e) {
-      _showError('Lỗi kết nối: $e\n(Kiểm tra IP và Tường lửa)');
+      _showError('Connection error: $e\n(Check IP and Firewall)');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -127,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Đăng Nhập Smart Home")),
+      appBar: AppBar(title: const Text("Smart Home Login")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -135,18 +135,17 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             TextField(
                 controller: _userController,
-                decoration: const InputDecoration(labelText: 'Tài khoản')),
+                decoration: const InputDecoration(labelText: 'Username')),
             TextField(
                 controller: _passController,
-                decoration: const InputDecoration(labelText: 'Mật khẩu'),
+                decoration: const InputDecoration(labelText: 'Password'),
                 obscureText: true),
             const SizedBox(height: 20),
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
                     onPressed: _login,
-                    child:
-                        const Text("ĐĂNG NHẬP", style: TextStyle(fontSize: 18)),
+                    child: const Text("LOGIN", style: TextStyle(fontSize: 18)),
                   ),
           ],
         ),

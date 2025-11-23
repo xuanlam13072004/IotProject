@@ -45,10 +45,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           selectedItemColor: const Color(0xFF3E4E5E),
           unselectedItemColor: const Color(0xFF3E4E5E).withOpacity(0.5),
           items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.tune), label: 'Control'),
             BottomNavigationBarItem(
-                icon: Icon(Icons.tune), label: 'Điều khiển'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.manage_accounts), label: 'Quản lý'),
+                icon: Icon(Icons.manage_accounts), label: 'Manage'),
           ],
         ),
       ),
