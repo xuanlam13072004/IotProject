@@ -5,10 +5,21 @@ yarn-error.log
 package-lock.json
 
 # env
+**/.env
+**/.env.*
+!**/.env.example
+
 face_env/
 voice_env/
 .venv/
 venv/
+env/
+**/face_env/
+**/voice_env/
+**/.venv/
+**/venv/
+**/env/
+**/pyvenv.cfg
 __pycache__/
 *.pyc
 
