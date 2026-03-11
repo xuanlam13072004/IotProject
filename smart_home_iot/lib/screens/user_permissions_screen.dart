@@ -79,7 +79,7 @@ class _UserPermissionsScreenState extends State<UserPermissionsScreen> {
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Đã lưu quyền thành công'),
+            content: Text('✅ Permissions saved.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -88,7 +88,7 @@ class _UserPermissionsScreenState extends State<UserPermissionsScreen> {
         final error = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Lỗi: ${error['error']}'),
+            content: Text('❌ Error: ${error['error']}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -97,7 +97,7 @@ class _UserPermissionsScreenState extends State<UserPermissionsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Lỗi: $e'),
+          content: Text('❌ Error: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -122,7 +122,7 @@ class _UserPermissionsScreenState extends State<UserPermissionsScreen> {
     return Scaffold(
       backgroundColor: _bgColor,
       appBar: AppBar(
-        title: Text('Phân quyền: ${widget.username}'),
+        title: Text('Manage Permissions: ${widget.username}'),
         backgroundColor: _accentColor,
         foregroundColor: Colors.white,
         actions: [
@@ -140,51 +140,69 @@ class _UserPermissionsScreenState extends State<UserPermissionsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildCategoryCard(
-                    'Cửa Chính',
+                    'Main Door',
                     Icons.door_front_door,
                     'door',
                     [
-                      PermissionItem('view', 'Xem trạng thái'),
-                      PermissionItem('open', 'Mở cửa'),
-                      PermissionItem('close', 'Đóng cửa'),
+                      PermissionItem('view', 'View Status'),
+                      PermissionItem('open', 'Open Door'),
+                      PermissionItem('close', 'Close Door'),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildCategoryCard(
-                    'Mái Che',
+                    'Awning',
                     Icons.roofing,
                     'awning',
                     [
-                      PermissionItem('view', 'Xem trạng thái'),
-                      PermissionItem('open', 'Mở mái che'),
-                      PermissionItem('close', 'Đóng mái che'),
-                      PermissionItem('setMode', 'Chuyển chế độ Auto/Manual'),
+                      PermissionItem('view', 'View Status'),
+                      PermissionItem('open', 'Open Awning'),
+                      PermissionItem('close', 'Close Awning'),
+                      PermissionItem('setMode', 'Switch Mode Auto/Manual'),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildCategoryCard(
-                    'Quản lý Báo động',
+                    'Alarm Management',
                     Icons.notifications_active,
                     'alarm',
                     [
-                      PermissionItem('view', 'Xem trạng thái'),
-                      PermissionItem('snooze', 'Tạm hoãn báo động'),
-                      PermissionItem('snoozeAll', 'Tắt TẤT CẢ báo động'),
-                      PermissionItem('snoozeFire', 'Tắt báo động LỬA'),
-                      PermissionItem('snoozeGas', 'Tắt báo động GAS'),
-                      PermissionItem('cancelSnooze', 'Kích hoạt lại (Admin)'),
+                      PermissionItem('view', 'View Status'),
+                      PermissionItem('snooze', 'Snooze Alarm'),
+                      PermissionItem('snoozeAll', 'Turn Off All Alarms'),
+                      PermissionItem('snoozeFire', 'Turn Off Fire Alarm'),
+                      PermissionItem('snoozeGas', 'Turn Off Gas Alarm'),
+                      PermissionItem('cancelSnooze', 'Reactivate (Admin)'),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildCategoryCard(
-                    'Dữ liệu Cảm biến',
+                    'Sensor Data',
                     Icons.sensors,
                     'sensors',
                     [
-                      PermissionItem('viewTemperature', 'Xem nhiệt độ'),
-                      PermissionItem('viewHumidity', 'Xem độ ẩm'),
-                      PermissionItem('viewGas', 'Xem khí gas'),
-                      PermissionItem('viewFire', 'Xem cảm biến lửa'),
+                      PermissionItem('viewTemperature', 'View Temperature'),
+                      PermissionItem('viewHumidity', 'View Humidity'),
+                      PermissionItem('viewGas', 'View Gas'),
+                      PermissionItem('viewFire', 'View Fire'),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCategoryCard(
+                    'Voice Assistant',
+                    Icons.mic,
+                    'voice',
+                    [
+                      PermissionItem('use', 'Use Voice Assistant'),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCategoryCard(
+                    'Door Camera',
+                    Icons.videocam,
+                    'camera',
+                    [
+                      PermissionItem('use', 'Use Door Camera'),
                     ],
                   ),
                 ],

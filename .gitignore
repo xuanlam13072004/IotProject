@@ -3,7 +3,14 @@ node_modules/
 npm-debug.log
 yarn-error.log
 package-lock.json
-.env
+
+# env
+face_env/
+voice_env/
+.venv/
+venv/
+__pycache__/
+*.pyc
 
 # Flutter/Dart
 smart_home_iot/build/

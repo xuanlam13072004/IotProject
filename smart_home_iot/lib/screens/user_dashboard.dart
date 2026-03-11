@@ -41,7 +41,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('user_token');
-      if (token == null) return;
+      if (token == null) {
+        if (mounted) setState(() => _permissionsLoaded = true);
+        return;
+      }
 
       final url = connectivityService.uri('/accounts/me/permissions');
       final response = await http.get(
@@ -51,14 +54,18 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          _permissions = data['permissions'] ?? {};
-          _permissionsLoaded = true;
-        });
+        if (mounted) {
+          setState(() {
+            _permissions = data['permissions'] ?? {};
+            _permissionsLoaded = true;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _permissionsLoaded = true);
       }
     } catch (e) {
       print('Error loading permissions: $e');
-      setState(() => _permissionsLoaded = true);
+      if (mounted) setState(() => _permissionsLoaded = true);
     }
   }
 
@@ -77,27 +84,27 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       final sensorMatch = RegExp(r'sensor=(\w+)').firstMatch(action);
       if (sensorMatch != null) {
         final sensor = sensorMatch.group(1);
-        if (sensor == 'fire')
-          sensorInfo = ' (Lửa)';
-        else if (sensor == 'gas')
+        if (sensor == 'fire') {
+          sensorInfo = ' (Fire)';
+        } else if (sensor == 'gas')
           sensorInfo = ' (Gas)';
-        else if (sensor == 'all') sensorInfo = ' (Tất cả)';
+        else if (sensor == 'all') sensorInfo = ' (All)';
       }
     }
 
     const Map<String, String> actionMessages = {
-      'open_door': 'Đã gửi lệnh Mở Cửa chính.',
-      'close_door': 'Đã gửi lệnh Đóng Cửa chính.',
-      'open_awning': 'Đã gửi lệnh Mở Mái che.',
-      'close_awning': 'Đã gửi lệnh Đóng Mái che.',
-      'set_auto': 'Đã chuyển Mái che sang chế độ Tự động.',
-      'set_manual': 'Đã chuyển Mái che sang chế độ Thủ công.',
-      'set_snooze': 'Đã tạm hoãn báo động',
-      'cancel_snooze': 'Đã kích hoạt lại báo động',
+      'open_door': 'Sent command: Open Main Door.',
+      'close_door': 'Sent command: Close Main Door.',
+      'open_awning': 'Sent command: Open Awning.',
+      'close_awning': 'Sent command: Close Awning.',
+      'set_auto': 'Switched Awning to Auto mode.',
+      'set_manual': 'Switched Awning to Manual mode.',
+      'set_snooze': 'Alarm snoozed',
+      'cancel_snooze': 'Alarm reactivated',
     };
 
     final baseMessage =
-        actionMessages[baseAction] ?? 'Đã gửi lệnh: $baseAction';
+        actionMessages[baseAction] ?? 'Sent command: $baseAction';
     return baseMessage + sensorInfo + (sensorInfo.isNotEmpty ? '' : '.');
   }
 
@@ -106,7 +113,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     final token = prefs.getString('user_token');
     if (token == null) {
       if (mounted) {
-        NotificationService.show(context, 'Chưa đăng nhập!', true);
+        NotificationService.show(context, 'Not logged in!', true);
       }
       return;
     }
@@ -152,14 +159,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       } else {
         NotificationService.show(
           context,
-          'Gửi lệnh thất bại, vui lòng thử lại!',
+          'Send failed. Try again!',
           true,
         );
       }
     } catch (e) {
       if (!mounted) return;
-      NotificationService.show(
-          context, 'Gửi lệnh thất bại, vui lòng thử lại!', true);
+      NotificationService.show(context, 'Send failed. Try again!', true);
     }
   }
 

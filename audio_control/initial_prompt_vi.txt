@@ -1,0 +1,32 @@
+mở cửa
+đóng cửa
+mở mái hiên
+mở mái che
+đóng mái hiên
+đóng mái che
+bật chế độ tự động
+tắt chế độ tự động
+chuyển sang chế độ thủ công
+bật chế độ thủ công
+hẹn giờ tạm tắt báo động
+tạm tắt báo động
+tắt báo động trong 5 phút
+tắt báo động trong 10 phút
+bật lại báo động
+hủy tạm tắt báo động
+hủy snooze
+hủy báo động
+snooze báo cháy
+báo động báo cháy
+snooze báo gas
+báo động báo gas
+hủy snooze báo cháy
+hủy báo động báo cháy
+hủy snooze báo gas
+hủy báo động báo gas
+mở cửa chính
+đóng cửa chính
+mở mái che
+đóng mái che
+mở cửa giúp tôi
+đóng cửa giúp tôi

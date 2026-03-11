@@ -1,0 +1,6 @@
+{
+  "noise_floor_rms": 1e-06,
+  "ambient_sec": 2.0,
+  "sample_rate": 16000,
+  "source": "mobile_upload"
+}

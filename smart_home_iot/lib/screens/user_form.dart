@@ -39,7 +39,9 @@ class _UserFormScreenState extends State<UserFormScreen> {
       'viewHumidity': true,
       'viewGas': true,
       'viewFire': true
-    }
+    },
+    'voice': {'use': false},
+    'camera': {'use': false},
   };
 
   @override
@@ -70,6 +72,8 @@ class _UserFormScreenState extends State<UserFormScreen> {
             'awning': perms['awning'] ?? _permissions['awning'],
             'alarm': perms['alarm'] ?? _permissions['alarm'],
             'sensors': perms['sensors'] ?? _permissions['sensors'],
+            'voice': perms['voice'] ?? _permissions['voice'],
+            'camera': perms['camera'] ?? _permissions['camera'],
           };
         });
       }
@@ -135,7 +139,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -145,7 +149,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
   Widget build(BuildContext context) {
     final isEdit = widget.existingUser != null;
     return Scaffold(
-      appBar: AppBar(title: Text(isEdit ? 'Sửa người dùng' : 'Tạo người dùng')),
+      appBar: AppBar(title: Text(isEdit ? 'Edit User' : 'Create User')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -158,7 +162,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
                 enabled: !isEdit, // Backend hiện chưa hỗ trợ đổi username
                 validator: (v) {
                   if (!isEdit && (v == null || v.trim().isEmpty))
-                    return 'Bắt buộc';
+                    return 'Required';
                   return null;
                 },
               ),
@@ -167,10 +171,10 @@ class _UserFormScreenState extends State<UserFormScreen> {
                 obscureText: true,
                 decoration: InputDecoration(
                     labelText: isEdit
-                        ? 'Mật khẩu (để trống nếu giữ nguyên)'
-                        : 'Mật khẩu'),
+                        ? 'Password (leave empty to keep current)'
+                        : 'Password'),
                 validator: (v) {
-                  if (!isEdit && (v == null || v.isEmpty)) return 'Bắt buộc';
+                  if (!isEdit && (v == null || v.isEmpty)) return 'Required';
                   return null;
                 },
               ),
@@ -185,7 +189,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
                 decoration: const InputDecoration(labelText: 'Role'),
               ),
               const SizedBox(height: 12),
-              const Text('Quyền cho thiết bị esp32_1',
+              const Text('Permissions for esp32_1',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               CheckboxListTile(
                 value: _canRead,
@@ -202,12 +206,12 @@ class _UserFormScreenState extends State<UserFormScreen> {
               // Granular Permissions Section
               const Divider(),
               const Text(
-                'Quyền chi tiết (Granular Permissions)',
+                'Granular Permissions',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Cấu hình chi tiết quyền truy cập cho từng tính năng',
+                'Detailed permission configuration for each feature',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 16),
@@ -260,12 +264,30 @@ class _UserFormScreenState extends State<UserFormScreen> {
                 ['viewTemperature', 'viewHumidity', 'viewGas', 'viewFire'],
                 'sensors',
               ),
+              const SizedBox(height: 12),
+
+              _buildPermissionCategory(
+                'Voice Assistant',
+                Icons.mic,
+                ['Sử dụng voice'],
+                ['use'],
+                'voice',
+              ),
+              const SizedBox(height: 12),
+
+              _buildPermissionCategory(
+                'Door Camera',
+                Icons.videocam,
+                ['Sử dụng camera'],
+                ['use'],
+                'camera',
+              ),
               const SizedBox(height: 16),
               _submitting
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
                       onPressed: _save,
-                      child: const Text('Lưu'),
+                      child: const Text('Save'),
                     ),
             ],
           ),

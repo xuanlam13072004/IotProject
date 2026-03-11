@@ -29,6 +29,14 @@ const PermissionsSchema = new mongoose.Schema({
         viewHumidity: { type: Boolean, default: true },
         viewGas: { type: Boolean, default: true },
         viewFire: { type: Boolean, default: true }
+    },
+    // Voice assistant
+    voice: {
+        use: { type: Boolean, default: false }
+    },
+    // Door camera access
+    camera: {
+        use: { type: Boolean, default: false }
     }
 }, { _id: false });
 

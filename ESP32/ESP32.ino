@@ -5,6 +5,7 @@
 #include <Keypad_I2C.h>
 #include <Keypad.h>
 #include <ESP32Servo.h>
+#include <Adafruit_INA219.h>
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -17,17 +18,19 @@
 #include <Preferences.h>
 
 // ================= KHAI BÁO CẤU HÌNH (CONFIG) =================
-const char *WIFI_SSID = "Aces of Spades";
-const char *WIFI_PASS = "1234567899";
+const char *WIFI_SSID = "XuanLamPC";
+const char *WIFI_PASS = "xuanlamdeptrai";
 
 // Mật khẩu Admin cố định (dùng để cấp quyền đổi pass cửa)
 const String ADMIN_PASSWORD = "1307";
 Preferences preferences;
 
-// --- CẤU HÌNH LOCAL (MẠNG LAN) --- (Windows Mobile Hotspot host IP 192.168.137.1)
-// Điều chỉnh nếu máy tính của bạn có IP khác khi bật Mobile Hotspot.
+// --- CẤU HÌNH LOCAL (MẠNG LAN) ---
 const char *BASE_URL_ACCOUNT = "http://192.168.137.1:4000/api/devices/esp32_1";
 const char *SERVER_URL = "http://192.168.137.1:5000/api/devices/esp32_1/data";
+
+// ESP32-CAM local endpoint (static IP configured in ESP32-CAM.ino)
+const char *ESP32_CAM_OPEN_URL = "http://192.168.137.100/open_cam";
 
 const char *DEVICE_SECRET = "my_secret_key_123";
 #define DEVICE_ID "esp32_1"
@@ -37,9 +40,10 @@ unsigned long lastSend = 0;
 const unsigned long sendInterval = 900000; // 15 phút = 900,000ms
 
 // Ngưỡng để coi như "có thay đổi đáng kể"
-#define TEMP_CHANGE_THRESHOLD 1.0 // Thay đổi 1°C trở lên
-#define HUM_CHANGE_THRESHOLD 5.0  // Thay đổi 5% trở lên
-#define GAS_CHANGE_THRESHOLD 50   // Thay đổi 50 đơn vị trở lên
+#define TEMP_CHANGE_THRESHOLD 1.0  // Thay đổi 1°C trở lên
+#define HUM_CHANGE_THRESHOLD 5.0   // Thay đổi 5% trở lên
+#define GAS_CHANGE_THRESHOLD 50    // Thay đổi 50 đơn vị trở lên
+#define POWER_CHANGE_THRESHOLD 0.5 // Thay đổi 0.5W trở lên
 
 #define POLL_INTERVAL 3000
 unsigned long lastPollTime = 0;
@@ -82,6 +86,8 @@ String hmacSha256(const String &data, const String &key)
 #define STEPPER_IN4 19
 #define AWNING_BUTTON_PIN 15
 
+#define INA219_ADDRESS 0x40
+
 #define SD_CS_PIN 5
 #define SD_MOSI 23
 #define SD_MISO 25
@@ -101,6 +107,7 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 RTC_DS3231 rtc;
 DHT dht(DHTPIN, DHTTYPE);
 Servo doorServo;
+Adafruit_INA219 ina219(INA219_ADDRESS);
 AccelStepper awningStepper(AccelStepper::FULL4WIRE, STEPPER_IN1, STEPPER_IN3, STEPPER_IN2, STEPPER_IN4);
 
 // Cấu hình Keypad
@@ -120,6 +127,9 @@ volatile float currentHum = NAN;
 volatile int currentGasValue = 0;
 volatile int currentFlameValue = HIGH;
 volatile int currentRainValue = HIGH;
+volatile float currentVoltage = 0.0;
+volatile float currentAmps = 0.0;
+volatile float currentPower = 0.0;
 volatile bool isRaining = false;
 
 volatile bool gasAlert = false;
@@ -157,6 +167,7 @@ bool lastSentGasAlert = false;
 bool lastSentDoorOpen = false;
 bool lastSentRaining = false;
 bool lastSentAwningAutoMode = true;
+float lastSentPower = 0.0;
 
 // Mật khẩu cửa động (đọc từ Preferences)
 String doorPassword = "1234"; // Giá trị mặc định
@@ -769,6 +780,51 @@ void pollCommands()
     http.end();
 }
 
+// ================= TRIGGER FACE AUTH TRÊN ESP32-CAM =================
+bool triggerEsp32CamOpen(String &message)
+{
+    message = "";
+
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        message = "wifi_not_connected";
+        return false;
+    }
+
+    HTTPClient http;
+    http.begin(ESP32_CAM_OPEN_URL);
+    http.setTimeout(12000);
+
+    int code = http.GET();
+    if (code <= 0)
+    {
+        message = "cam_http_failed";
+        http.end();
+        return false;
+    }
+
+    String body = http.getString();
+    http.end();
+
+    DynamicJsonDocument doc(512);
+    DeserializationError err = deserializeJson(doc, body);
+    if (err)
+    {
+        message = "cam_json_error";
+        return false;
+    }
+
+    bool ok = doc["ok"] | false;
+    if (ok)
+    {
+        message = "face_verified";
+        return true;
+    }
+
+    message = doc["message"] | doc["step"] | "face_not_verified";
+    return false;
+}
+
 // ================= KHỞI TẠO PHẦN CỨNG =================
 void setupHardwareBase()
 {
@@ -798,6 +854,15 @@ void setupHardwareBase()
 
     SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
     Serial.println("Đã khởi động SPI bus.");
+
+    if (!ina219.begin())
+    {
+        Serial.println("Lỗi: Không tìm thấy INA219");
+    }
+    else
+    {
+        Serial.println("INA219 khởi tạo thành công");
+    }
 }
 
 void readSensorsOnce()
@@ -815,6 +880,9 @@ void readSensorsOnce()
     currentGasValue = gas;
     currentFlameValue = flame;
     currentRainValue = rain;
+    currentVoltage = ina219.getBusVoltage_V();
+    currentAmps = ina219.getCurrent_mA() / 1000.0;
+    currentPower = ina219.getPower_mW() / 1000.0;
     isRaining = (rain == LOW);
     gasAlert = (gas > gasThreshold);
     fireAlert = (flame == LOW);
@@ -847,6 +915,9 @@ void TaskSensorLCD(void *pvParameters)
         currentGasValue = gasValue;
         currentFlameValue = flameValue;
         currentRainValue = rainValue;
+        currentVoltage = ina219.getBusVoltage_V();
+        currentAmps = ina219.getCurrent_mA() / 1000.0;
+        currentPower = ina219.getPower_mW() / 1000.0;
         isRaining = (rainValue == LOW);
         gasAlert = (gasValue > gasThreshold);
         fireAlert = (flameValue == LOW);
@@ -1270,6 +1341,34 @@ void TaskKeypadDoor(void *pvParameters)
                     vTaskDelay(pdMS_TO_TICKS(1500));
                     lcd.clear();
                 }
+                else if (key == 'D')
+                {
+                    lcd.clear();
+                    lcd.print("Dang xac thuc CAM");
+                    lcd.setCursor(0, 1);
+                    lcd.print("Vui long doi...");
+
+                    String camMsg;
+                    bool camOk = triggerEsp32CamOpen(camMsg);
+
+                    lcd.clear();
+                    if (camOk)
+                    {
+                        lcd.print("Xac thuc OK");
+                        lcd.setCursor(0, 1);
+                        lcd.print("Dang mo cua...");
+                        sendActionLog("control_device", "keypad", "Triggered ESP32-CAM face auth", true, "unknown_physical");
+                    }
+                    else
+                    {
+                        lcd.print("Xac thuc that bai");
+                        lcd.setCursor(0, 1);
+                        lcd.print(camMsg);
+                        sendActionLog("control_device", "keypad", "ESP32-CAM face auth failed: " + camMsg, false, "unknown_physical");
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    lcd.clear();
+                }
             }
             else
             {
@@ -1478,6 +1577,9 @@ void TaskSendServer(void *pvParameters)
         payload += "\"temperature\":" + String(isnan(t) ? 0.0 : t, 1) + ",";
         payload += "\"humidity\":" + String(isnan(h) ? 0.0 : h, 1) + ",";
         payload += "\"gasValue\":" + String(gas) + ",";
+        payload += "\"voltage\":" + String(currentVoltage, 2) + ",";
+        payload += "\"current\":" + String(currentAmps, 3) + ",";
+        payload += "\"power\":" + String(currentPower, 2) + ",";
         payload += "\"fireAlert\":" + String(fire ? "true" : "false") + ",";
         payload += "\"awningOpen\":" + String(awning ? "true" : "false") + ",";
         payload += "\"doorOpen\":" + String(door ? "true" : "false") + ",";
@@ -1539,6 +1641,9 @@ void TaskSendServer(void *pvParameters)
             payload += "\"temperature\":" + String(isnan(t) ? 0.0 : t, 1) + ",";
             payload += "\"humidity\":" + String(isnan(h) ? 0.0 : h, 1) + ",";
             payload += "\"gasValue\":" + String(gas) + ",";
+            payload += "\"voltage\":" + String(currentVoltage, 2) + ",";
+            payload += "\"current\":" + String(currentAmps, 3) + ",";
+            payload += "\"power\":" + String(currentPower, 2) + ",";
             payload += "\"fireAlert\":" + String(fire ? "true" : "false") + ",";
             payload += "\"awningOpen\":" + String(awning ? "true" : "false") + ",";
             payload += "\"doorOpen\":" + String(door ? "true" : "false") + ",";
@@ -1635,6 +1740,8 @@ void TaskSendServer(void *pvParameters)
             significantChange = true; // Độ ẩm thay đổi >= 5%
         if (abs(gas - lastSentGas) >= GAS_CHANGE_THRESHOLD)
             significantChange = true; // Gas thay đổi >= 50
+        if (abs(currentPower - lastSentPower) >= POWER_CHANGE_THRESHOLD)
+            significantChange = true; // Công suất thay đổi đáng kể
 
         unsigned long now = millis();
         // Gửi ngay nếu có critical event, hoặc gửi theo lịch nếu đủ thời gian
@@ -1662,11 +1769,15 @@ void TaskSendServer(void *pvParameters)
             lastSentDoorOpen = door;
             lastSentRaining = raining;
             lastSentAwningAutoMode = autoMode;
+            lastSentPower = currentPower;
 
             String payload = "{";
             payload += "\"temperature\":" + String(isnan(t) ? 0.0 : t, 1) + ",";
             payload += "\"humidity\":" + String(isnan(h) ? 0.0 : h, 1) + ",";
             payload += "\"gasValue\":" + String(gas) + ",";
+            payload += "\"voltage\":" + String(currentVoltage, 2) + ",";
+            payload += "\"current\":" + String(currentAmps, 3) + ",";
+            payload += "\"power\":" + String(currentPower, 2) + ",";
             payload += "\"fireAlert\":" + String(fire ? "true" : "false") + ",";
             payload += "\"awningOpen\":" + String(awning ? "true" : "false") + ",";
             payload += "\"doorOpen\":" + String(door ? "true" : "false") + ",";

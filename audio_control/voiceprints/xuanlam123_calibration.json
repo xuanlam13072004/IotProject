@@ -1,0 +1,7 @@
+{
+  "speaker_threshold": 0.5551889166235924,
+  "anti_spoof_threshold": 0.47897406946867704,
+  "fusion_threshold": 0.5382840633392334,
+  "trials": 3,
+  "source": "mobile_upload"
+}

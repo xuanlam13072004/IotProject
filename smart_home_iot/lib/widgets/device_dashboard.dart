@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config.dart';
 import '../services/connectivity_service.dart';
 import 'neumorphic_container.dart';
@@ -12,6 +14,7 @@ class DeviceDashboard extends StatefulWidget {
   final Future<void> Function(String action) onAction;
   final bool isAdmin;
   final Map<String, dynamic> permissions;
+  final VoidCallback? onEsp32FaceAuth;
 
   const DeviceDashboard({
     super.key,
@@ -19,6 +22,7 @@ class DeviceDashboard extends StatefulWidget {
     required this.onAction,
     this.isAdmin = false,
     this.permissions = const {},
+    this.onEsp32FaceAuth,
   });
 
   @override
@@ -34,6 +38,9 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
   double temperature = 0;
   double humidity = 0;
   int gasValue = 0;
+  double voltage = 0.0;
+  double current = 0.0;
+  double power = 0.0;
   bool fireAlert = false;
   bool awningOpen = false;
   bool doorOpen = false;
@@ -48,6 +55,10 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
 
   bool wifiConnected = false; // API call success (not used for mode icons)
   double _gateSlide = 0.0;
+  bool _showDoorCamInCard = false;
+  int _doorCamTs = DateTime.now().millisecondsSinceEpoch;
+  Timer? _doorCamRefreshTimer;
+  String? _camAuthToken;
 
   // Door password change state
   final _newPasswordController = TextEditingController();
@@ -81,7 +92,6 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
     super.initState();
     // React to connectivity mode changes (Local/Cloud) by refetching immediately
     _modeListener = () {
-      // When mode flips, issue an immediate refresh so UI stays in sync
       _fetchLatestData();
     };
     connectivityService.modeNotifier.addListener(_modeListener);
@@ -89,6 +99,12 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
     _fetchLatestData(); // Immediate fetch
     _pollTimer =
         Timer.periodic(const Duration(seconds: 3), (_) => _fetchLatestData());
+
+    // Load auth token for cloud cam proxy
+    SharedPreferences.getInstance().then((prefs) {
+      _camAuthToken = prefs.getString('user_token');
+    });
+
     // Countdown timer for alarm UI updates
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && mutedSensors.isNotEmpty) setState(() {});
@@ -112,6 +128,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
   void dispose() {
     _pollTimer?.cancel();
     _countdownTimer?.cancel();
+    _doorCamRefreshTimer?.cancel();
     _newPasswordController.dispose();
     connectivityService.modeNotifier.removeListener(_modeListener);
     super.dispose();
@@ -134,6 +151,9 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
             temperature = (data['temperature'] ?? 0).toDouble();
             humidity = (data['humidity'] ?? 0).toDouble();
             gasValue = (data['gasValue'] ?? 0).toInt();
+            voltage = (data['voltage'] ?? 0).toDouble();
+            current = (data['current'] ?? 0).toDouble();
+            power = (data['power'] ?? 0).toDouble();
             fireAlert = data['fireAlert'] ?? false;
             awningOpen = data['awningOpen'] ?? false;
             doorOpen = data['doorOpen'] ?? false;
@@ -173,7 +193,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
               if (_hasPermission('alarm', 'view')) const SizedBox(height: 24),
               if (widget.isAdmin) _buildDoorSecurityCard(),
               if (widget.isAdmin) const SizedBox(height: 24),
-              _buildBottomNavigation(),
+              // Đã xóa _buildBottomNavigation() ở đây để tránh trùng lặp giao diện
             ],
           ),
         ),
@@ -195,9 +215,6 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
             _buildStatusIcon(Icons.cloud_outlined, cloudActive),
             const SizedBox(width: 16),
             _buildStatusIcon(Icons.wifi, localActive),
-            const SizedBox(width: 16),
-            _buildStatusIcon(
-                offline ? Icons.report_problem : Icons.check, false),
           ],
         );
       },
@@ -247,62 +264,82 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
 
     if (canTemp) {
       sensors.add(Expanded(
-        child: _buildSensorCard(
-          Icons.thermostat_outlined,
-          'Temperature',
-          '${temperature.toStringAsFixed(1)}°C',
-          Colors.orange,
-        ),
+        child: _buildSensorCard('assets/icon/Thermometer.json',
+            '${temperature.toStringAsFixed(1)}°C', Colors.orange),
       ));
     }
     if (canHum) {
       if (sensors.isNotEmpty) sensors.add(const SizedBox(width: 14));
       sensors.add(Expanded(
-        child: _buildSensorCard(
-          Icons.water_drop_outlined,
-          'Humidity',
-          '${humidity.toStringAsFixed(0)}%',
-          Colors.blue,
-        ),
+        child: _buildSensorCard('assets/icon/humidity.json',
+            '${humidity.toStringAsFixed(0)}%', Colors.blue),
       ));
     }
     if (canGas) {
       if (sensors.isNotEmpty) sensors.add(const SizedBox(width: 14));
       sensors.add(Expanded(
         child: _buildSensorCard(
-          Icons.health_and_safety_outlined,
-          'Gas',
-          gasValue > 1000 ? 'Danger' : 'Safe',
-          gasValue > 1000 ? Colors.red : Colors.green,
-        ),
+            'assets/icon/GAS Cylinder.json',
+            gasValue > 1000 ? 'Danger' : 'Safe',
+            gasValue > 1000 ? Colors.red : Colors.green),
       ));
     }
     if (canFire) {
       if (sensors.isNotEmpty) sensors.add(const SizedBox(width: 14));
       sensors.add(Expanded(
         child: _buildSensorCard(
-          Icons.local_fire_department_outlined,
-          'Fire',
-          fireAlert ? 'Danger' : 'Safe',
-          fireAlert ? Colors.redAccent : Colors.deepOrange,
-        ),
+            'assets/icon/Fire.json',
+            fireAlert ? 'Danger' : 'Safe',
+            fireAlert ? Colors.redAccent : Colors.deepOrange),
       ));
     }
 
-    return Row(children: sensors);
+    final powerSensors = <Widget>[];
+    if (anySensor) {
+      powerSensors.add(Expanded(
+        child: _buildSensorCard('assets/icon/charging.json',
+            '${voltage.toStringAsFixed(1)}V', Colors.purple),
+      ));
+      powerSensors.add(const SizedBox(width: 14));
+      powerSensors.add(Expanded(
+        child: _buildSensorCard('assets/icon/lightning.json',
+            '${current.toStringAsFixed(2)}A', Colors.cyan),
+      ));
+      powerSensors.add(const SizedBox(width: 14));
+      powerSensors.add(Expanded(
+        child: _buildSensorCard('assets/icon/electric.json',
+            '${power.toStringAsFixed(1)}W', Colors.amber),
+      ));
+    }
+
+    return Column(
+      children: [
+        Row(children: sensors),
+        if (powerSensors.isNotEmpty) const SizedBox(height: 14),
+        if (powerSensors.isNotEmpty) Row(children: powerSensors),
+      ],
+    );
   }
 
-  Widget _buildSensorCard(
-      IconData icon, String label, String value, Color iconColor) {
+  Widget _buildSensorCard(String lottieAsset, String value, Color iconColor) {
     return NeumorphicContainer(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: iconColor, size: 26),
-          const SizedBox(height: 6),
-          Text(label, style: _labelStyle.copyWith(fontSize: 11)),
-          const SizedBox(height: 2),
+          SizedBox(
+            width: 46,
+            height: 46,
+            child: Lottie.asset(
+              lottieAsset,
+              fit: BoxFit.contain,
+              repeat: true,
+              errorBuilder: (context, error, stackTrace) {
+                return Icon(Icons.sensors, size: 36, color: iconColor);
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
           Text(value, style: _valueStyle),
         ],
       ),
@@ -321,9 +358,19 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_hasPermission('awning', 'view'))
-              Expanded(child: _buildAutomatedRoofCard()),
+              Expanded(
+                child: SizedBox(
+                  height: 290,
+                  child: _buildAutomatedRoofCard(),
+                ),
+              ),
             if (_hasPermission('awning', 'view')) const SizedBox(width: 18),
-            Expanded(child: _buildLightCard()),
+            Expanded(
+              child: SizedBox(
+                height: 290,
+                child: _buildEsp32CamCard(),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 18),
@@ -352,6 +399,12 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
         final double handleSize = 48;
         final double maxTravel = trackWidth - handleSize - 8;
         final double leftPos = 4 + _gateSlide * maxTravel;
+        final double openProgress = doorOpen ? (1 - _gateSlide) : _gateSlide;
+        final Color trackColor = Color.lerp(
+          Colors.blue.shade500,
+          Colors.red.shade400,
+          openProgress,
+        )!;
 
         final String label = doorOpen ? 'Slide to Close' : 'Slide to Open';
         final IconData icon = doorOpen ? Icons.lock_open : Icons.lock_outline;
@@ -361,7 +414,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
             width: trackWidth,
             height: 56,
             decoration: BoxDecoration(
-              color: const Color(0xFFCCD6E0),
+              color: trackColor,
               borderRadius: BorderRadius.circular(30),
               boxShadow: const [
                 BoxShadow(
@@ -380,7 +433,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                     label,
                     style: _labelStyle.copyWith(
                       fontSize: 13,
-                      color: _textColor.withValues(alpha: 0.7),
+                      color: Colors.white.withValues(alpha: 0.95),
                     ),
                   ),
                 ),
@@ -401,7 +454,7 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                       width: handleSize,
                       height: handleSize,
                       decoration: BoxDecoration(
-                        color: _bgColor,
+                        color: Colors.white,
                         shape: BoxShape.circle,
                         boxShadow: const [
                           BoxShadow(
@@ -414,7 +467,13 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
                               blurRadius: 6),
                         ],
                       ),
-                      child: Icon(icon, color: _textColor, size: 22),
+                      child: Icon(
+                        icon,
+                        color: doorOpen
+                            ? Colors.red.shade400
+                            : Colors.blue.shade600,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
@@ -587,34 +646,144 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
 
     // Send command (don't await to keep UI responsive)
     widget.onAction(action);
-    // Timer will sync real state in next 3s poll
   }
 
-  Widget _buildLightCard() {
+  void _toggleDoorCamInCard() {
+    if (_showDoorCamInCard) {
+      _doorCamRefreshTimer?.cancel();
+      _doorCamRefreshTimer = null;
+      setState(() {
+        _showDoorCamInCard = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _showDoorCamInCard = true;
+      _doorCamTs = DateTime.now().millisecondsSinceEpoch;
+    });
+
+    _doorCamRefreshTimer?.cancel();
+    _doorCamRefreshTimer =
+        Timer.periodic(const Duration(milliseconds: 700), (_) {
+      if (!mounted || !_showDoorCamInCard) return;
+      setState(() {
+        _doorCamTs = DateTime.now().millisecondsSinceEpoch;
+      });
+    });
+  }
+
+  Widget _buildEsp32CamCard() {
+    final canUseCamera = _hasPermission('camera', 'use');
+    final imageUrl = connectivityService.camSnapshotUrl(ts: _doorCamTs);
+    final isCloud = !connectivityService.isLocalMode;
+    final headers = <String, String>{
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    };
+    if (isCloud && _camAuthToken != null) {
+      headers['Authorization'] = 'Bearer $_camAuthToken';
+    }
     final card = NeumorphicContainer(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Living Room Lights', style: _titleStyle.copyWith(fontSize: 14)),
+          Text('Door Camera', style: _titleStyle.copyWith(fontSize: 14)),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                width: double.infinity,
+                color: const Color(0xFFCCD6E0),
+                child: _showDoorCamInCard
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        headers: headers,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, __, ___) {
+                          return Center(
+                            child: Text(
+                              'Unable to download camera image',
+                              style: _labelStyle.copyWith(
+                                color: _textColor.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : Center(
+                        child: Text(
+                          'Press to open the door camera to view.',
+                          style: _labelStyle.copyWith(
+                            color: _textColor.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           Center(
             child: NeumorphicButton(
-              width: 70,
-              height: 70,
-              borderRadius: BorderRadius.circular(35),
-              onPressed: null,
-              child: Icon(
-                Icons.lightbulb,
-                color: _textColor.withValues(alpha: 0.35),
-                size: 36,
+              width: 74,
+              height: 74,
+              borderRadius: BorderRadius.circular(37),
+              onPressed: (widget.enabled && canUseCamera)
+                  ? _toggleDoorCamInCard
+                  : null,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    _showDoorCamInCard ? Icons.videocam_off : Icons.videocam,
+                    color: (widget.enabled && canUseCamera)
+                        ? (_showDoorCamInCard ? Colors.red : Colors.blue)
+                        : _textColor.withValues(alpha: 0.35),
+                    size: 36,
+                  ),
+                  if (!canUseCamera)
+                    Transform.rotate(
+                      angle: -0.75,
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                ],
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              !canUseCamera
+                  ? 'Camera disabled by admin'
+                  : (_showDoorCamInCard
+                      ? 'Turn off door camera'
+                      : 'Open door camera'),
+              style: _labelStyle.copyWith(fontSize: 12),
             ),
           ),
         ],
       ),
     );
-
-    return _dimUnavailable(card, 'Coming Soon');
+    return card;
   }
 
   Widget _buildFanCard() {
@@ -1184,27 +1353,5 @@ class _DeviceDashboardState extends State<DeviceDashboard> {
         );
       }
     }
-  }
-
-  Widget _buildBottomNavigation() {
-    return NeumorphicContainer(
-      height: 70,
-      borderRadius: BorderRadius.circular(35),
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Icon(Icons.home, color: _textColor, size: 26),
-          Text('History',
-              style: _labelStyle.copyWith(
-                  color: _textColor.withValues(alpha: 0.75))),
-          Icon(Icons.settings_outlined,
-              color: _textColor.withValues(alpha: 0.75), size: 26),
-          Text('Admin',
-              style: _labelStyle.copyWith(
-                  color: _textColor.withValues(alpha: 0.75))),
-        ],
-      ),
-    );
   }
 }

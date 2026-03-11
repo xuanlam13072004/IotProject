@@ -23,6 +23,25 @@ class ConnectivityService {
   bool get isCloudMode => mode == ConnectivityMode.cloud;
   bool get isOffline => mode == ConnectivityMode.offline;
 
+  /// Face AI base URL (local or cloud based on current mode)
+  String get faceAiBaseUrl =>
+      isLocalMode ? config.faceAiLocalBase : config.faceAiCloudBase;
+
+  /// Voice/audio_control base URL (local or cloud based on current mode)
+  String get voiceBaseUrl =>
+      isLocalMode ? config.voiceLocalUrl : config.voiceCloudUrl;
+
+  /// ESP32-CAM snapshot URL (local direct or cloud proxy based on current mode)
+  String camSnapshotUrl({int? ts}) {
+    if (isLocalMode) {
+      final suffix = ts != null ? '?ts=$ts' : '';
+      return '${config.esp32CamLocalBase}/snapshot.jpg$suffix';
+    }
+    // Cloud: use backend_account proxy, need auth token
+    final suffix = ts != null ? '?ts=$ts' : '';
+    return '${config.esp32CamCloudSnapshotUrl}$suffix';
+  }
+
   /// Start periodic probing and run an immediate probe once.
   void startMonitoring({Duration? interval}) {
     _timer?.cancel();
@@ -51,18 +70,16 @@ class ConnectivityService {
     final bool localOk = await _probe(
       origin: localOrigin,
       timeout: probeTimeout,
-      withNgrokHeader: false,
     );
     if (localOk) {
       _setMode(ConnectivityMode.local, config.localUrl);
       return ConnectivityMode.local;
     }
 
-    // 2) Fallback to CLOUD (Ngrok)
+    // 2) Fallback to CLOUD (Cloudflare Tunnel)
     final bool cloudOk = await _probe(
       origin: cloudOrigin,
       timeout: probeTimeout,
-      withNgrokHeader: true,
     );
     if (cloudOk) {
       _setMode(ConnectivityMode.cloud, config.cloudUrl);
@@ -74,16 +91,13 @@ class ConnectivityService {
     return ConnectivityMode.offline;
   }
 
-  /// Build request headers with Authorization and conditional Ngrok header.
+  /// Build request headers with Authorization.
   Map<String, String> buildHeaders(
       {String? token, Map<String, String>? extra}) {
     final Map<String, String> headers = <String, String>{
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
-    if (isCloudMode) {
-      headers[config.ngrokHeaderName] = config.ngrokHeaderValue;
-    }
     if (extra != null) headers.addAll(extra);
     return headers;
   }
@@ -109,17 +123,12 @@ class ConnectivityService {
   Future<bool> _probe({
     required String origin,
     required Duration timeout,
-    required bool withNgrokHeader,
   }) async {
     final Uri url = Uri.parse('$origin${config.connectivityHealthPath}');
-    final Map<String, String> headers = <String, String>{
-      if (withNgrokHeader) config.ngrokHeaderName: config.ngrokHeaderValue,
-    };
 
     final http.Client client = http.Client();
     try {
-      final http.Response resp =
-          await client.get(url, headers: headers).timeout(timeout);
+      final http.Response resp = await client.get(url).timeout(timeout);
       return resp.statusCode == 200;
     } catch (_) {
       return false;

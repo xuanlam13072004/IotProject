@@ -1,0 +1,5 @@
+{
+  "num_samples": 10,
+  "embedding_dim": 192,
+  "max_samples": null
+}

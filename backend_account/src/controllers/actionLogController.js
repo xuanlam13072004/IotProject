@@ -25,7 +25,9 @@ module.exports.getActionLogs = async (req, res) => {
         }
 
         if (actionType) {
-            filter.actionType = actionType;
+            // Support comma-separated actionType values (e.g. "set_snooze,cancel_snooze")
+            const types = actionType.split(',').map(t => t.trim()).filter(Boolean);
+            filter.actionType = types.length === 1 ? types[0] : { $in: types };
         }
 
         if (userId) {
